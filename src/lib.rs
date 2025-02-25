@@ -23,9 +23,6 @@ enum Polarization {
     Horizontal,
 }
 
-const STATION_X: f32 = 0.0;
-const STATION_Y: f32 = 0.0;
-
 const SPEED_OF_LIGHT: f32 = 299_792_458.;
 pub const FREQUENCY: f32 = 2.45e9;
 pub const LAMBDA: f32 = SPEED_OF_LIGHT / FREQUENCY;
@@ -39,8 +36,8 @@ const SMOOTING_FACTOR: f64 = 0.8;
 const POLARIZATION: Polarization = Vertical; // antennas mounted orthogonal to earths surface (e.g. straight downward from uav)
 
 #[pyfunction]
-pub fn distance(x: f32, y: f32, z: f32, station_z: f32) -> f32 {
-    ((STATION_X - x).powi(2) + (STATION_Y - y).powi(2) + (station_z - z).powi(2)).sqrt()
+pub fn distance(x: f32, y: f32, z: f32, station_x: f32, station_y: f32, station_z: f32) -> f32 {
+    ((station_x - x).powi(2) + (station_y - y).powi(2) + (station_z - z).powi(2)).sqrt()
 }
 
 pub fn dist_to_loss(dist: f32) -> f32 {
@@ -49,16 +46,30 @@ pub fn dist_to_loss(dist: f32) -> f32 {
 }
 
 #[pyfunction]
-pub fn calculate_paths_freespace(x: f32, y: f32, z: f32, station_z: f32) -> Vec<(f32, f32, f32)> {
-    let dist = distance(x, y, z, station_z);
+pub fn calculate_paths_freespace(
+    x: f32,
+    y: f32,
+    z: f32,
+    station_x: f32,
+    station_y: f32,
+    station_z: f32,
+) -> Vec<(f32, f32, f32)> {
+    let dist = distance(x, y, z, station_x, station_y, station_z);
     let loss = dist_to_loss(dist);
     vec![(loss, 0.0_f32, 0.)]
 }
 
 #[pyfunction]
-pub fn calculate_paths_two_ray(x: f32, y: f32, z: f32, station_z: f32) -> Vec<(f32, f32, f32)> {
-    let d_los = distance(x, y, z, station_z);
-    let d_nlos = distance(x, y, z + 2. * station_z, station_z);
+pub fn calculate_paths_two_ray(
+    x: f32,
+    y: f32,
+    z: f32,
+    station_x: f32,
+    station_y: f32,
+    station_z: f32,
+) -> Vec<(f32, f32, f32)> {
+    let d_los = distance(x, y, z, station_x, station_y, station_z);
+    let d_nlos = distance(x, y, z + 2. * station_z, station_x, station_y, station_z);
     let delta_d = d_nlos - d_los;
     let delta_t = delta_d / SPEED_OF_LIGHT;
     let loss_los = dist_to_loss(d_los);
@@ -68,9 +79,16 @@ pub fn calculate_paths_two_ray(x: f32, y: f32, z: f32, station_z: f32) -> Vec<(f
 
 /// see DOI 10.1109/TVT.2016.2530306
 #[pyfunction]
-pub fn calculate_paths_ce2r(x: f32, y: f32, z: f32, station_z: f32) -> Vec<(f32, f32, f32)> {
+pub fn calculate_paths_ce2r(
+    x: f32,
+    y: f32,
+    z: f32,
+    station_x: f32,
+    station_y: f32,
+    station_z: f32,
+) -> Vec<(f32, f32, f32)> {
     dsl!("x,y,z {},{},{}", x, y, z);
-    let r_1 = distance(x, y, z, station_z);
+    let r_1 = distance(x, y, z, station_x, station_y, station_z);
     let loss_los = dist_to_loss(r_1);
     let r_1 = r_1 as f64;
     dsl!("r_1 {}", r_1);
@@ -80,7 +98,7 @@ pub fn calculate_paths_ce2r(x: f32, y: f32, z: f32, station_z: f32) -> Vec<(f32,
     dsl!("abs_height_uav {}", abs_height_uav);
     let abs_height_station = KA + station_z as f64;
     dsl!("abs_height_station {}", abs_height_station);
-    let x_y_dist = distance(x, y, station_z, station_z) as f64;
+    let x_y_dist = distance(x, y, station_z, station_x, station_y, station_z) as f64;
     // angle between uav and station via earth center
     let q: f64 = if x_y_dist != 0.0 {
         ((abs_height_uav.powi(2) + abs_height_station.powi(2) - r_1.powi(2))
@@ -278,13 +296,15 @@ pub fn calculate_paths_9ray_suburban(
     x: f32,
     y: f32,
     z: f32,
+    station_x: f32,
+    station_y: f32,
     station_z: f32,
 ) -> Vec<(f32, f32, f32)> {
     // println!("FLAG!!!");
     let mut rng = thread_rng();
-    let mut paths = calculate_paths_ce2r(x, y, z, station_z);
+    let mut paths = calculate_paths_ce2r(x, y, z, station_x, station_y, station_z);
     // println!("paths: {:?}", paths);
-    let dist = distance(x, y, z, station_z);
+    let dist = distance(x, y, z, station_x, station_y, station_z);
     // println!("dist: {:?}", dist);
     let mut intermittent_ray_states = INTERMITTENT_RAY_ORIGINS.lock().unwrap();
     // 'step 3'
